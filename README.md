@@ -9,14 +9,15 @@ result to IMS Venturi mentors for a personalized, human follow-up rather than
 exposing raw scores automatically. See [Diagnostic_Test.md](./Diagnostic_Test.md)
 for the full product spec.
 
-This repo currently contains infrastructure scaffolding only — no auth, data
-capture, or test logic yet.
+The data-capture flow (lead form → phone OTP verification via Supabase Auth
++ Twilio Verify → lead record insert) is implemented. Diagnostic test logic
+is not yet built.
 
 ## Stack
 
 - **Frontend:** React + Vite
 - **Styling:** Tailwind CSS
-- **Backend/Auth:** Supabase (Auth/OTP + database) — not yet wired up
+- **Backend/Auth:** Supabase (phone OTP via Twilio Verify + Postgres database)
 - **Deployment:** Vercel
 
 ## Project structure
@@ -51,6 +52,14 @@ cp .env.example .env
 VITE_SUPABASE_URL=
 VITE_SUPABASE_ANON_KEY=
 ```
+
+### Supabase setup
+
+1. In the Supabase dashboard, enable **Phone** auth and configure Twilio
+   Verify as the SMS provider.
+2. Run [`supabase/leads.sql`](./supabase/leads.sql) in the SQL editor to
+   create the `leads` table with row level security (authenticated users
+   can insert their own row only — no public select/update/delete).
 
 ## Other scripts
 
