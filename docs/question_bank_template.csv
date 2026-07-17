@@ -1,0 +1,3 @@
+id,exam_type,section,subtype,difficulty,tier,question_text,option_a,option_b,option_c,option_d,option_e,correct_answer,explanation,created_at
+,GMAT,Quant,Algebra,3,snapshot,"If 3x + 7 = 22, what is the value of x?","3","5","7","9","15",b,"3x + 7 = 22 leads to 3x = 15, so x = 5.",
+,GMAT,Quant,Word Problems,6,full_replica,"A train travels 240 miles in 4 hours at a constant speed. If the train's speed is increased by 20 miles per hour, how long will it take to travel the same 240 miles?","2 hours","2.5 hours","3 hours","3.5 hours","4 hours",c,"Original speed = 240 / 4 = 60 mph. New speed = 60 + 20 = 80 mph. Time = 240 / 80 = 3 hours.",
