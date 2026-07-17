@@ -44,3 +44,28 @@ export function validateQuestionRow(row) {
 
   return reasons
 }
+
+function emptyToNull(value) {
+  const trimmed = (value ?? '').toString().trim()
+  return trimmed === '' ? null : trimmed
+}
+
+// Only call on rows that have already passed validateQuestionRow.
+// id/created_at are omitted so the database defaults apply.
+export function buildQuestionPayload(row) {
+  return {
+    exam_type: row.exam_type.trim(),
+    section: row.section.trim(),
+    subtype: emptyToNull(row.subtype),
+    difficulty: Number(row.difficulty),
+    tier: row.tier.trim(),
+    question_text: row.question_text.trim(),
+    option_a: row.option_a.trim(),
+    option_b: row.option_b.trim(),
+    option_c: emptyToNull(row.option_c),
+    option_d: emptyToNull(row.option_d),
+    option_e: emptyToNull(row.option_e),
+    correct_answer: row.correct_answer.trim(),
+    explanation: emptyToNull(row.explanation),
+  }
+}

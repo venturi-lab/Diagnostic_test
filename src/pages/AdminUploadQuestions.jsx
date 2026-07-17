@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import Papa from 'papaparse'
-import { validateQuestionRow } from '../lib/questionValidation'
+import { supabase } from '../lib/supabaseClient'
+import { validateQuestionRow, buildQuestionPayload } from '../lib/questionValidation'
 
 const COLUMNS = [
   'id',
@@ -26,29 +27,39 @@ function AdminUploadQuestions() {
   const [file, setFile] = useState(null)
   const [parsedRows, setParsedRows] = useState([])
   const [parseError, setParseError] = useState('')
-  const [commitMessage, setCommitMessage] = useState('')
+
+  // idle -> confirming -> importing -> done
+  const [commitState, setCommitState] = useState('idle')
+  const [importProgress, setImportProgress] = useState(0)
+  const [importResults, setImportResults] = useState(null)
 
   const validation = useMemo(() => {
     const errorRows = []
-    let validCount = 0
+    const validRows = []
 
-    for (const { rowNumber, data } of parsedRows) {
-      const reasons = validateQuestionRow(data)
+    for (const row of parsedRows) {
+      const reasons = validateQuestionRow(row.data)
       if (reasons.length === 0) {
-        validCount += 1
+        validRows.push(row)
       } else {
-        errorRows.push({ rowNumber, reasons, data })
+        errorRows.push({ ...row, reasons })
       }
     }
 
-    return { validCount, errorRows }
+    return { validRows, errorRows }
   }, [parsedRows])
+
+  const resetCommitState = () => {
+    setCommitState('idle')
+    setImportProgress(0)
+    setImportResults(null)
+  }
 
   const handleFileChange = (event) => {
     setFile(event.target.files?.[0] ?? null)
     setParsedRows([])
     setParseError('')
-    setCommitMessage('')
+    resetCommitState()
   }
 
   const handlePreview = () => {
@@ -58,7 +69,7 @@ function AdminUploadQuestions() {
     }
 
     setParseError('')
-    setCommitMessage('')
+    resetCommitState()
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
@@ -95,10 +106,25 @@ function AdminUploadQuestions() {
     URL.revokeObjectURL(url)
   }
 
-  const handleCommit = () => {
-    setCommitMessage(
-      `Ready to insert ${validation.validCount} valid row(s) — database insert isn't wired up yet.`,
-    )
+  const handleConfirmImport = async () => {
+    setCommitState('importing')
+    setImportProgress(0)
+
+    const succeeded = []
+    const failed = []
+
+    for (const { rowNumber, data } of validation.validRows) {
+      const { error } = await supabase.from('questions').insert(buildQuestionPayload(data))
+      if (error) {
+        failed.push({ rowNumber, error: error.message })
+      } else {
+        succeeded.push(rowNumber)
+      }
+      setImportProgress((prev) => prev + 1)
+    }
+
+    setImportResults({ succeeded, failed })
+    setCommitState('done')
   }
 
   const previewRows = parsedRows.slice(0, PREVIEW_ROW_LIMIT)
@@ -108,16 +134,22 @@ function AdminUploadQuestions() {
     <div className="mx-auto max-w-6xl p-6">
       <h1 className="text-xl font-semibold text-gray-900">Upload question bank</h1>
       <p className="mt-1 text-sm text-gray-600">
-        Upload a CSV matching the question bank template. This step only previews
-        and validates the parsed data — nothing is written to the database yet.
+        Upload a CSV matching the question bank template. Rows are validated before
+        anything is written to the database.
       </p>
 
       <div className="mt-6 flex items-center gap-3">
-        <input type="file" accept=".csv" onChange={handleFileChange} />
+        <input
+          type="file"
+          accept=".csv"
+          onChange={handleFileChange}
+          disabled={commitState === 'importing'}
+        />
         <button
           type="button"
           onClick={handlePreview}
-          className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white"
+          disabled={commitState === 'importing'}
+          className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
           Preview
         </button>
@@ -162,7 +194,7 @@ function AdminUploadQuestions() {
 
           <div className="mt-6 border-t border-gray-200 pt-4">
             <p className="text-sm font-medium text-gray-900">
-              {validation.validCount} row{validation.validCount === 1 ? '' : 's'} valid,{' '}
+              {validation.validRows.length} row{validation.validRows.length === 1 ? '' : 's'} valid,{' '}
               {validation.errorRows.length} row{validation.errorRows.length === 1 ? '' : 's'} have
               errors
             </p>
@@ -203,20 +235,96 @@ function AdminUploadQuestions() {
             )}
 
             <div className="mt-4">
-              <button
-                type="button"
-                disabled={!canCommit}
-                onClick={handleCommit}
-                className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-              >
-                Commit to database
-              </button>
-              {!canCommit && (
-                <p className="mt-1 text-xs text-gray-500">
-                  Fix all rows with errors before committing.
+              {commitState === 'idle' && (
+                <>
+                  <button
+                    type="button"
+                    disabled={!canCommit}
+                    onClick={() => setCommitState('confirming')}
+                    className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                  >
+                    Commit to database
+                  </button>
+                  {!canCommit && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      Fix all rows with errors before committing.
+                    </p>
+                  )}
+                </>
+              )}
+
+              {commitState === 'confirming' && (
+                <div className="rounded-lg border border-gray-300 bg-gray-50 p-4">
+                  <p className="text-sm font-medium text-gray-900">
+                    Ready to import {validation.validRows.length} question
+                    {validation.validRows.length === 1 ? '' : 's'} — proceed?
+                  </p>
+                  <div className="mt-3 flex gap-3">
+                    <button
+                      type="button"
+                      onClick={handleConfirmImport}
+                      className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white"
+                    >
+                      Confirm import
+                    </button>
+                    <button
+                      type="button"
+                      onClick={resetCommitState}
+                      className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {commitState === 'importing' && (
+                <p className="text-sm text-gray-700">
+                  Importing… ({importProgress}/{validation.validRows.length})
                 </p>
               )}
-              {commitMessage && <p className="mt-2 text-sm text-gray-700">{commitMessage}</p>}
+
+              {commitState === 'done' && importResults && (
+                <div>
+                  <p className="text-sm font-medium text-gray-900">
+                    Imported {importResults.succeeded.length} of {validation.validRows.length}{' '}
+                    question{validation.validRows.length === 1 ? '' : 's'}.
+                  </p>
+
+                  {importResults.failed.length > 0 && (
+                    <div className="mt-3 overflow-x-auto border border-red-200">
+                      <table className="min-w-full text-left text-sm">
+                        <thead className="bg-red-50">
+                          <tr>
+                            <th className="whitespace-nowrap border-b border-red-200 px-3 py-2 font-medium text-gray-700">
+                              Row
+                            </th>
+                            <th className="border-b border-red-200 px-3 py-2 font-medium text-gray-700">
+                              Error
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {importResults.failed.map(({ rowNumber, error }) => (
+                            <tr key={rowNumber} className="border-b border-red-100 last:border-b-0">
+                              <td className="whitespace-nowrap px-3 py-2 text-gray-800">
+                                {rowNumber}
+                              </td>
+                              <td className="px-3 py-2 text-gray-800">{error}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {importResults.succeeded.length > 0 && (
+                    <p className="mt-2 text-xs text-gray-500">
+                      Successful rows: {importResults.succeeded.join(', ')}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </>
