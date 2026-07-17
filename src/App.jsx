@@ -1,12 +1,11 @@
 import Layout from './components/Layout'
 import Home from './pages/Home'
+import AdminUploadQuestions from './pages/AdminUploadQuestions'
 
 function App() {
-  return (
-    <Layout>
-      <Home />
-    </Layout>
-  )
+  const isAdminUpload = window.location.pathname === '/admin/upload-questions'
+
+  return <Layout>{isAdminUpload ? <AdminUploadQuestions /> : <Home />}</Layout>
 }
 
 export default App
